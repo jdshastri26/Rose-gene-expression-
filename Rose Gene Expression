@@ -1,0 +1,157 @@
+
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+# Install required Bioconductor packages
+BiocManager::install(c("DESeq2", "pheatmap", "EnhancedVolcano", "RColorBrewer"))
+
+# Load the necessary libraries
+library(DESeq2)
+library(pheatmap)
+library(EnhancedVolcano)
+library(RColorBrewer)
+
+
+# Load count data (genes as rows, samples as columns)
+countData <- read.csv("rose_gene_counts.csv", row.names=1)
+
+# Load sample metadata (conditions and other sample information)
+colData <- read.csv("rose_sample_metadata.csv", row.names=1)
+
+# Ensure the row names in colData match the column names in countData
+colData <- colData[colnames(countData), ]
+
+# Convert the condition column to a factor
+colData$condition <- factor(colData$condition)
+
+# Create a DESeq2 dataset object, specifying the experimental design
+dds <- DESeqDataSetFromMatrix(countData = countData,
+                              colData = colData,
+                              design = ~ condition)
+# Load count data (genes as rows, samples as columns)
+countData <- read.csv("rose_gene_counts.csv", row.names=1)
+
+# Load sample metadata (conditions and other sample information)
+colData <- read.csv("rose_sample_metadata.csv", row.names=1)
+
+# Ensure the row names in colData match the column names in countData
+colData <- colData[colnames(countData), ]
+
+# Convert the condition column to a factor
+colData$condition <- factor(colData$condition)
+
+# Create a DESeq2 dataset object, specifying the experimental design
+dds <- DESeqDataSetFromMatrix(countData = countData,
+                              colData = colData,
+                              design = ~ condition)
+
+
+
+# Filter out genes with low counts (e.g., genes with fewer than 10 total reads across all samples)
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep, ]
+
+
+
+# Perform DESeq normalization (also performs variance-stabilizing transformations)
+dds <- DESeq(dds)
+
+# Extract normalized counts for downstream visualization
+normalized_counts <- counts(dds, normalized=TRUE)
+
+# Perform variance-stabilizing transformation (VST) for PCA
+vsd <- vst(dds, blind=FALSE)
+
+# Plot PCA with samples colored by condition
+pca_plot <- plotPCA(vsd, intgroup="condition")
+print(pca_plot)
+
+
+# Calculate sample distances using the VST-transformed data
+sampleDists <- dist(t(assay(vsd)))
+
+# Convert distances to a matrix and generate the heatmap
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- colData(dds)$condition
+colnames(sampleDistMatrix) <- colData(dds)$condition
+
+# Heatmap of sample distances with customized color palette
+colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+
+# Perform the differential expression analysis
+res <- results(dds)
+
+# Filter significant results (adjusted p-value < 0.05)
+resSig <- res[which(res$padj < 0.05), ]
+
+# Display a summary of the results
+summary(res)
+
+
+# Plotting the MA-plot with customizations
+plotMA(res, main="MA-plot of Differential Expression", ylim=c(-2, 2))
+
+
+
+# Plotting the MA-plot with customizations
+plotMA(res, main="MA-plot of Differential Expression", ylim=c(-2, 2))
+
+
+# Enhanced volcano plot with labeling of key genes
+EnhancedVolcano(res,
+                lab = rownames(res),
+                x = 'log2FoldChange',
+                y = 'pvalue',
+                pCutoff = 0.05,
+                FCcutoff = 1.5,
+                title = 'Differential Expression in Rose',
+                subtitle = 'Condition A vs Condition B',
+                legendPosition = 'right',
+                caption = "Log2 fold-change vs adjusted p-value",
+                pointSize = 3.0,
+                labSize = 4.0,
+                col = c('grey30', 'forestgreen', 'royalblue', 'red2'),
+                colAlpha = 1.0,
+                legendLabSize = 12,
+                legendIconSize = 4.0,
+                drawConnectors = TRUE,
+                widthConnectors = 0.5)
+
+
+
+# Select the top 20 differentially expressed genes
+topGenes <- head(order(res$padj), 20)
+
+# Heatmap of the top genes with hierarchical clustering
+pheatmap(assay(vsd)[topGenes, ],
+         cluster_rows=TRUE,
+         show_rownames=TRUE,
+         cluster_cols=TRUE,
+         annotation_col=colData(dds),
+         color = colorRampPalette(brewer.pal(9, "RdYlBu"))(255),
+         scale = "row")
+
+
+# Order results by adjusted p-value (most significant genes first)
+resOrdered <- res[order(res$padj), ]
+
+# Export significant results to a CSV file
+write.csv(as.data.frame(resSig), file="rose_significant_differential_expression_results.csv")
+
+
+
+
+Summary of the Refined Workflow
+Data Preparation: Ensures proper alignment between count data and metadata, preparing for accurate analysis.
+Pre-filtering: Eliminates low-count genes, enhancing statistical power.
+Normalization: Accounts for technical variations, ensuring fair comparisons across samples.
+Quality Control: Uses PCA and sample distance heatmaps to assess data quality and identify potential outliers.
+Differential Expression Analysis: Identifies genes that are significantly different between conditions.
+Visualization: Incorporates MA-plots, enhanced volcano plots, and heatmaps for clear and informative data presentation.
+Exporting Results: Saves the significant findings for downstream analyses or reporting.
